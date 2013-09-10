@@ -38,11 +38,8 @@ private[cluster] object VectorClock {
   }
 
   object Timestamp {
-    private val counter = new AtomicLong
-
-    val zero: Long = 0L
-
-    def apply(): Long = counter.incrementAndGet()
+    final val Zero = 0L
+    final val EndMarker = Long.MinValue
   }
 
   sealed trait Ordering
@@ -58,7 +55,7 @@ private[cluster] object VectorClock {
   /**
    * Marker to signal that we have reached the end of a vector clock.
    */
-  private val cmpEndMarker = (VectorClock.Node("endmarker"), Long.MinValue)
+  private val cmpEndMarker = (VectorClock.Node("endmarker"), Timestamp.EndMarker)
 
 }
 
@@ -81,7 +78,10 @@ case class VectorClock(
   /**
    * Increment the version for the node passed as argument. Returns a new VectorClock.
    */
-  def :+(node: Node): VectorClock = copy(versions = versions + (node -> Timestamp()))
+  def :+(node: Node): VectorClock = {
+    val currentTimestamp = versions.getOrElse(node, Timestamp.Zero)
+    copy(versions = versions.updated(node, currentTimestamp + 1))
+  }
 
   /**
    * Returns true if <code>this</code> and <code>that</code> are concurrent else false.
@@ -180,7 +180,7 @@ case class VectorClock(
   def merge(that: VectorClock): VectorClock = {
     var mergedVersions = that.versions
     for ((node, time) ← versions) {
-      val mergedVersionsCurrentTime = mergedVersions.getOrElse(node, Timestamp.zero)
+      val mergedVersionsCurrentTime = mergedVersions.getOrElse(node, Timestamp.Zero)
       if (time > mergedVersionsCurrentTime)
         mergedVersions = mergedVersions.updated(node, time)
     }
